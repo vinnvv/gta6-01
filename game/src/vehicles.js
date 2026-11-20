@@ -1,7 +1,14 @@
-// Cars: box-built vehicles, arcade driving, and the traffic that fills the
-// roads. Every car is one THREE.Group so the game can move it as a unit.
+// Cars: vehicles, arcade driving, and the traffic that fills the roads.
+// Every car is one THREE.Group so the game can move it as a unit.
+//
+// Visuals are real low-poly .glb models (Kenney Car Kit, CC0) loaded from
+// game/assets/models/. They load asynchronously at startup; until a style's
+// model is ready the car uses the box-built makeCarMesh fallback, which is
+// swapped in place the moment the model arrives. A car never appears broken
+// or missing: if a model fails to load, the fallback stays for good.
 
 import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { CFG } from './config.js';
 import { makeRng, pick, range } from './random.js';
 
@@ -72,6 +79,92 @@ export function makeCarMesh(style, color) {
   return g;
 }
 
+// --- Real .glb car models --------------------------------------------------
+
+// One local file per style, from the Kenney Car Kit (CC0, see the pack's
+// License.txt). The models use a shared palette texture at
+// assets/models/Textures/colormap.png, which the .glb files reference by
+// relative path, so it ships next to them. The models face +Z, the same
+// forward the physics uses (Car.forward is +Z at heading 0).
+const MODEL_FILES = {
+  sedan: 'sedan.glb',
+  sport: 'sport.glb',
+  taxi: 'taxi.glb',
+  van: 'van.glb',
+  pickup: 'pickup.glb',
+  police: 'police.glb',
+  suv: 'suv.glb',
+};
+// Target visual length per style, matching the box-built fallback so the
+// physics (collision radius, wheelbase feel) does not change.
+const MODEL_LENGTH = { sedan: 4.7, sport: 4.4, taxi: 4.7, van: 5.4, pickup: 4.7, police: 4.7, suv: 4.7 };
+
+const glbLoader = new GLTFLoader();
+const templates = {}; // style -> normalized THREE.Group, or null if its load failed
+let pendingCars = []; // cars spawned before their style's model arrived
+let modelsSettled = 0;
+const MODEL_STYLES = Object.keys(MODEL_FILES);
+
+// Normalize a loaded model once: scale it to the target length, center it
+// on X/Z, and rest its lowest point on Y=0 so the wheels sit on the road.
+function normalizeModel(scene, style) {
+  const box = new THREE.Box3().setFromObject(scene);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const s = MODEL_LENGTH[style] / size.z;
+  scene.scale.setScalar(s);
+  scene.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+  scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return scene;
+}
+
+// Swap a car's fallback children for a clone of its style's model. The
+// car's own group (position, rotation, combat registration) never moves.
+function installModel(car) {
+  const template = templates[car.style];
+  if (!template || car.modelSwapped) return false;
+  while (car.mesh.children.length) car.mesh.remove(car.mesh.children[0]);
+  car.mesh.add(template.clone(true));
+  car.modelSwapped = true;
+  return true;
+}
+
+function preloadCarModels() {
+  if (typeof window !== 'undefined') window.__carModelsReady = false;
+  for (const style of MODEL_STYLES) {
+    const url = new URL(`../assets/models/${MODEL_FILES[style]}`, import.meta.url).href;
+    glbLoader.load(url,
+      (gltf) => {
+        templates[style] = normalizeModel(gltf.scene, style);
+        pendingCars = pendingCars.filter((car) => {
+          if (car.style === style) return !installModel(car);
+          return true;
+        });
+        settleOne();
+      },
+      undefined,
+      () => {
+        // Keep the fallback: the car stays a box-built car, never missing.
+        templates[style] = null;
+        console.warn(`[cars] model failed to load, using fallback: ${MODEL_FILES[style]}`);
+        settleOne();
+      });
+  }
+}
+
+function settleOne() {
+  modelsSettled++;
+  if (modelsSettled === MODEL_STYLES.length && typeof window !== 'undefined') {
+    window.__carModelsReady = true;
+  }
+}
+
+// Start loading the moment this module is imported, so the models are
+// usually ready by the time the player leaves the menu.
+preloadCarModels();
+
 const C = CFG.car;
 
 export class Car {
@@ -92,6 +185,10 @@ export class Car {
     this.playerDriven = false;
     this.stolen = false;
     this.dead = false;
+    this.modelSwapped = false;
+    // Use the real model if it is already here, otherwise ride the
+    // fallback until the model arrives and swaps itself in.
+    if (!installModel(this)) pendingCars.push(this);
   }
 
   forward() {
@@ -163,7 +260,7 @@ export class Traffic {
   }
 
   spawnInitial() {
-    const styles = ['sedan', 'sedan', 'sport', 'taxi', 'van', 'pickup'];
+    const styles = ['sedan', 'sedan', 'sport', 'taxi', 'van', 'pickup', 'suv'];
     for (let i = 0; i < CFG.traffic.count; i++) {
       const node = this.city.nodes[Math.floor(this.rng() * this.city.nodes.length)];
       const car = new Car(this.scene, pick(this.rng, styles), pick(this.rng, CAR_COLORS), node.x, node.z, this.rng() * Math.PI * 2);
