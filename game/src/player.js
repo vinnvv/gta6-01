@@ -41,10 +41,138 @@ export function makePersonMesh(shirt, pants, skin, scale = 1) {
   return { group: g, legL, legR, armL, armR };
 }
 
+// Held weapon silhouettes mounted to Rico's right hand pivot.
+function makeWeaponMeshes() {
+  const gunMetal = new THREE.MeshLambertMaterial({ color: 0x24282e });
+  const gunDark = new THREE.MeshLambertMaterial({ color: 0x181a1e });
+  const woodMat = new THREE.MeshLambertMaterial({ color: 0x6b4226 });
+
+  const addPart = (parent, w, h, d, mat, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    parent.add(m);
+  };
+
+  const pistol = new THREE.Group();
+  addPart(pistol, 0.06, 0.14, 0.08, gunDark, 0, -0.04, 0.04);
+  addPart(pistol, 0.065, 0.08, 0.28, gunMetal, 0, 0.03, 0.14);
+
+  const shotgun = new THREE.Group();
+  addPart(shotgun, 0.07, 0.1, 0.24, woodMat, 0, -0.02, -0.06);
+  addPart(shotgun, 0.08, 0.1, 0.24, gunMetal, 0, 0.02, 0.14);
+  addPart(shotgun, 0.055, 0.055, 0.42, gunDark, 0, 0.045, 0.44);
+  addPart(shotgun, 0.075, 0.07, 0.18, woodMat, 0, 0, 0.36);
+
+  const smg = new THREE.Group();
+  addPart(smg, 0.06, 0.13, 0.07, gunDark, 0, -0.04, 0.02);
+  addPart(smg, 0.08, 0.11, 0.3, gunMetal, 0, 0.03, 0.12);
+  addPart(smg, 0.045, 0.18, 0.06, gunDark, 0, -0.09, 0.18);
+  addPart(smg, 0.04, 0.04, 0.14, gunDark, 0, 0.04, 0.32);
+
+  const rifle = new THREE.Group();
+  addPart(rifle, 0.07, 0.11, 0.26, woodMat, 0, -0.01, -0.08);
+  addPart(rifle, 0.08, 0.11, 0.3, gunMetal, 0, 0.02, 0.16);
+  addPart(rifle, 0.05, 0.16, 0.08, gunDark, 0, -0.09, 0.2);
+  addPart(rifle, 0.07, 0.08, 0.22, woodMat, 0, 0.025, 0.38);
+  addPart(rifle, 0.04, 0.04, 0.26, gunDark, 0, 0.04, 0.56);
+
+  const map = { pistol, shotgun, smg, rifle };
+  for (const m of Object.values(map)) m.visible = false;
+  return map;
+}
+
+// Rico's character model: burnt-orange open jacket over a cream tee,
+// dark indigo jeans, boots, layered hair and shades. Uses the exact same
+// proportions and limb pivots as makePersonMesh.
+function makeRicoMesh() {
+  const g = new THREE.Group();
+  const jacketMat = new THREE.MeshLambertMaterial({ color: 0xc84b22 });
+  const jacketTrimMat = new THREE.MeshLambertMaterial({ color: 0x9c3515 });
+  const shirtMat = new THREE.MeshLambertMaterial({ color: 0xebe4d4 });
+  const beltMat = new THREE.MeshLambertMaterial({ color: 0x261d17 });
+  const buckleMat = new THREE.MeshLambertMaterial({ color: 0xd4a94e });
+  const jeansMat = new THREE.MeshLambertMaterial({ color: 0x1f2d3d });
+  const shoeMat = new THREE.MeshLambertMaterial({ color: 0x1a1613 });
+  const soleMat = new THREE.MeshLambertMaterial({ color: 0x3b332c });
+  const skinMat = new THREE.MeshLambertMaterial({ color: 0xc98e6b });
+  const hairMat = new THREE.MeshLambertMaterial({ color: 0x231710 });
+  const shadesMat = new THREE.MeshLambertMaterial({ color: 0x15171c });
+
+  const addBox = (parent, w, h, d, mat, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    parent.add(m);
+    return m;
+  };
+
+  // Inner shirt + belt.
+  addBox(g, 0.58, 0.7, 0.32, shirtMat, 0, 1.18, 0);
+  addBox(g, 0.64, 0.09, 0.36, beltMat, 0, 0.85, 0);
+  addBox(g, 0.12, 0.09, 0.04, buckleMat, 0, 0.85, 0.18);
+
+  // Open burnt-orange jacket (back, front panels, collar and back yoke).
+  addBox(g, 0.64, 0.68, 0.14, jacketMat, 0, 1.2, -0.11);
+  addBox(g, 0.22, 0.68, 0.24, jacketMat, -0.21, 1.2, 0.06);
+  addBox(g, 0.22, 0.68, 0.24, jacketMat, 0.21, 1.2, 0.06);
+  addBox(g, 0.65, 0.14, 0.04, jacketTrimMat, 0, 1.44, -0.175);
+  addBox(g, 0.48, 0.12, 0.1, jacketTrimMat, 0, 1.56, -0.14);
+  addBox(g, 0.09, 0.12, 0.22, jacketTrimMat, -0.22, 1.56, -0.02);
+  addBox(g, 0.09, 0.12, 0.22, jacketTrimMat, 0.22, 1.56, -0.02);
+
+  // Neck, head, sunglasses and layered hair.
+  addBox(g, 0.16, 0.12, 0.16, skinMat, 0, 1.56, 0);
+  addBox(g, 0.36, 0.36, 0.34, skinMat, 0, 1.74, 0);
+  addBox(g, 0.34, 0.08, 0.04, shadesMat, 0, 1.78, 0.175);
+  addBox(g, 0.39, 0.14, 0.37, hairMat, 0, 1.94, -0.01);
+  const quiff = addBox(g, 0.34, 0.09, 0.22, hairMat, 0, 2.01, 0.06);
+  quiff.rotation.x = -0.12;
+  addBox(g, 0.38, 0.24, 0.09, hairMat, 0, 1.8, -0.16);
+  addBox(g, 0.05, 0.16, 0.16, hairMat, -0.18, 1.82, -0.04);
+  addBox(g, 0.05, 0.16, 0.16, hairMat, 0.18, 1.82, -0.04);
+
+  // Legs with dark jeans and shoes.
+  const mkLeg = (x) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 0.82, 0);
+    addBox(pivot, 0.24, 0.64, 0.24, jeansMat, 0, -0.32, 0);
+    addBox(pivot, 0.25, 0.14, 0.3, shoeMat, 0, -0.71, 0.03);
+    addBox(pivot, 0.26, 0.04, 0.31, soleMat, 0, -0.79, 0.03);
+    g.add(pivot);
+    return pivot;
+  };
+  const legL = mkLeg(-0.17);
+  const legR = mkLeg(0.17);
+
+  // Arms with jacket sleeves, cuffs and skin hands.
+  const mkArm = (x) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(x, 1.5, 0);
+    addBox(pivot, 0.21, 0.49, 0.21, jacketMat, 0, -0.245, 0);
+    addBox(pivot, 0.22, 0.06, 0.22, jacketTrimMat, 0, -0.51, 0);
+    addBox(pivot, 0.17, 0.15, 0.17, skinMat, 0, -0.61, 0);
+    g.add(pivot);
+    return pivot;
+  };
+  const armL = mkArm(-0.42);
+  const armR = mkArm(0.42);
+
+  // Held weapon anchor on the right hand.
+  const weaponAnchor = new THREE.Group();
+  weaponAnchor.position.set(0, -0.6, 0.06);
+  armR.add(weaponAnchor);
+  const weaponMeshes = makeWeaponMeshes();
+  for (const m of Object.values(weaponMeshes)) weaponAnchor.add(m);
+
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return { parts: { group: g, legL, legR, armL, armR }, weaponMeshes };
+}
+
 export class Player {
   constructor(scene) {
-    const parts = makePersonMesh(0xd8d3c8, 0x2c3e50, 0xc98e6b);
+    const { parts, weaponMeshes } = makeRicoMesh();
     this.parts = parts;
+    this.weaponMeshes = weaponMeshes;
+    this._shownWeapon = null;
     this.mesh = parts.group;
     scene.add(this.mesh);
     this.pos = this.mesh.position;
@@ -57,6 +185,7 @@ export class Player {
     this.armor = 0;
     this.lastDamage = -99;
     this.weapon = 'fists';
+    this._syncWeaponMesh();
     // What Rico carries: the guns he owns, and each gun's own magazine.
     // `ammo` always mirrors the current weapon, so the shooting code never
     // has to know which gun is out.
@@ -69,6 +198,14 @@ export class Player {
     this.inCar = null;
     this.walkPhase = 0;
     this.dead = false;
+  }
+
+  _syncWeaponMesh() {
+    if (this._shownWeapon === this.weapon) return;
+    this._shownWeapon = this.weapon;
+    for (const [id, mesh] of Object.entries(this.weaponMeshes)) {
+      mesh.visible = id === this.weapon;
+    }
   }
 
   damage(amount, now) {
@@ -110,6 +247,7 @@ export class Player {
     this.weapon = id;
     this.ammo = id === 'fists' ? 0 : (this.ammoByWeapon[id] || 0);
     this.reloadTimer = 0;
+    this._syncWeaponMesh();
   }
 
   // Fresh magazine for the gun in hand; the reload timer is the lockout
@@ -124,6 +262,7 @@ export class Player {
   }
 
   update(dt, input, city, camYaw, now) {
+    this._syncWeaponMesh();
     if (this.inCar || this.dead) return;
     // Health regen after a quiet spell.
     if (now - this.lastDamage > P.regenDelay && this.health < P.maxHealth) {

@@ -105,14 +105,14 @@ function groundTexture() {
   const cv = document.createElement('canvas');
   cv.width = S; cv.height = S;
   const g = cv.getContext('2d');
-  // Base: city asphalt, warm from the low sun.
-  g.fillStyle = '#38352f';
+  // Base: city asphalt, slightly lightened so shadowed foregrounds stay readable.
+  g.fillStyle = '#48443d';
   g.fillRect(0, 0, S, S);
   // Large soft blotches so the base is never one flat tone.
   for (let i = 0; i < 30; i++) {
     const cx = -HALF + rng() * (HALF * 2);
     const cz = -HALF + rng() * (HALF * 2);
-    g.fillStyle = rng() < 0.5 ? 'rgba(255,220,170,0.05)' : 'rgba(40,30,20,0.05)';
+    g.fillStyle = rng() < 0.5 ? 'rgba(255,220,170,0.06)' : 'rgba(40,30,20,0.06)';
     g.beginPath();
     g.ellipse(toPx(cx), toPx(cz), (20 + rng() * 40) * scale, (15 + rng() * 30) * scale, rng() * Math.PI, 0, Math.PI * 2);
     g.fill();
@@ -145,8 +145,8 @@ function groundTexture() {
     g.stroke();
   }
   const lines = roadLines();
-  // Roads: lighter asphalt strips.
-  g.fillStyle = '#4a453e';
+  // Roads: sun-warmed mid-grey asphalt strips so foreground streets have tone and contrast.
+  g.fillStyle = '#5e584f';
   for (const x of lines) {
     g.fillRect(toPx(x - ROAD_HALF), 0, CITY.roadWidth * scale, toPx(HALF));
     g.fillRect(0, toPx(x - ROAD_HALF), toPx(HALF), CITY.roadWidth * scale);
@@ -155,7 +155,7 @@ function groundTexture() {
   for (let i = 0; i < 7000; i++) {
     const x = rng() * S;
     const y = rng() * toPx(HALF);
-    g.fillStyle = rng() < 0.5 ? 'rgba(0,0,0,0.10)' : 'rgba(255,240,210,0.07)';
+    g.fillStyle = rng() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,240,210,0.09)';
     g.fillRect(x, y, 2, 2);
   }
   // Darker repair patches on the roads.
@@ -167,11 +167,11 @@ function groundTexture() {
     const h = 4 + rng() * 8;
     const cx = vertical ? lx + (rng() - 0.5) * 4 : along;
     const cz = vertical ? along : lx + (rng() - 0.5) * 4;
-    g.fillStyle = rng() < 0.5 ? 'rgba(20,18,16,0.28)' : 'rgba(90,82,70,0.30)';
+    g.fillStyle = rng() < 0.5 ? 'rgba(20,18,16,0.28)' : 'rgba(110,102,90,0.28)';
     g.fillRect(toPx(cx - (vertical ? w : h) / 2), toPx(cz - (vertical ? h : w) / 2), (vertical ? w : h) * scale, (vertical ? h : w) * scale);
   }
   // Tire wear: two darker wheel tracks along every road.
-  g.fillStyle = 'rgba(15,13,11,0.13)';
+  g.fillStyle = 'rgba(20,18,15,0.14)';
   for (const x of lines) {
     for (const off of [-2.1, 2.1]) {
       g.fillRect(toPx(x + off - 0.7), 0, 1.4 * scale, toPx(HALF));
@@ -179,8 +179,8 @@ function groundTexture() {
     }
   }
   // Cracks: sparse dark polylines on the roads.
-  g.strokeStyle = 'rgba(12,10,9,0.4)';
-  g.lineWidth = 1.2;
+  g.strokeStyle = 'rgba(16,14,12,0.45)';
+  g.lineWidth = 1.3;
   for (let i = 0; i < 34; i++) {
     const lx = lines[Math.floor(rng() * lines.length)];
     const vertical = rng() < 0.5;
@@ -195,6 +195,58 @@ function groundTexture() {
       g.lineTo(toPx(ax), toPx(az));
     }
     g.stroke();
+  }
+  // Extra foreground-readable asphalt grain, worn patches and tar-seal cracks
+  // (own RNG seed so existing city/block patterns remain identical).
+  {
+    const asphaltRng = makeRng(20261122);
+    const cityMinPx = toPx(-HALF - ROAD_HALF);
+    const cityMaxPx = toPx(HALF + ROAD_HALF);
+    const citySpanPx = cityMaxPx - cityMinPx;
+    // Dense mineral aggregate speckle across the street grid.
+    for (let i = 0; i < 42000; i++) {
+      const x = cityMinPx + asphaltRng() * citySpanPx;
+      const y = cityMinPx + asphaltRng() * citySpanPx;
+      const light = asphaltRng() < 0.52;
+      const sz = asphaltRng() < 0.3 ? 3 : 2;
+      g.fillStyle = light ? 'rgba(246,236,216,0.13)' : 'rgba(22,19,16,0.16)';
+      g.fillRect(x, y, sz, sz);
+    }
+    // Additional weathered blotches and asphalt patches along every road.
+    for (const l of lines) {
+      for (let k = 0; k < 10; k++) {
+        const along = -HALF + asphaltRng() * (HALF * 2);
+        const vertical = asphaltRng() < 0.5;
+        const w = 2.5 + asphaltRng() * 4.5;
+        const h = 4 + asphaltRng() * 9;
+        const cx = vertical ? l + (asphaltRng() - 0.5) * 5 : along;
+        const cz = vertical ? along : l + (asphaltRng() - 0.5) * 5;
+        g.fillStyle = asphaltRng() < 0.5 ? 'rgba(30,27,24,0.22)' : 'rgba(134,126,112,0.18)';
+        g.fillRect(
+          toPx(cx - (vertical ? w : h) / 2),
+          toPx(cz - (vertical ? h : w) / 2),
+          (vertical ? w : h) * scale,
+          (vertical ? h : w) * scale,
+        );
+      }
+      // Distributed tar-seal cracks on every N-S and E-W street so any camera angle sees texture.
+      g.strokeStyle = 'rgba(20,18,16,0.50)';
+      g.lineWidth = 1.4;
+      for (let c = 0; c < 14; c++) {
+        const vertical = c % 2 === 0;
+        let ax = vertical ? l + (asphaltRng() - 0.5) * 8.5 : -HALF + asphaltRng() * (HALF * 2);
+        let az = vertical ? -HALF + asphaltRng() * (HALF * 2) : l + (asphaltRng() - 0.5) * 8.5;
+        g.beginPath();
+        g.moveTo(toPx(ax), toPx(az));
+        const segs = 4 + Math.floor(asphaltRng() * 4);
+        for (let s = 0; s < segs; s++) {
+          if (vertical) { az += 2.2 + asphaltRng() * 4.2; ax += (asphaltRng() - 0.5) * 2.4; }
+          else { ax += 2.2 + asphaltRng() * 4.2; az += (asphaltRng() - 0.5) * 2.4; }
+          g.lineTo(toPx(ax), toPx(az));
+        }
+        g.stroke();
+      }
+    }
   }
   // Sidewalks: pale warm borders around every block, with tile seams and
   // per-tile shade variation.
@@ -246,16 +298,148 @@ function groundTexture() {
       }
     }
   }
-  // Harbor Yards apron: concrete east of the city, where the containers sit.
-  g.fillStyle = '#6b655a';
-  g.fillRect(toPx(HALF), toPx(-HALF), (100) * scale, (HALF * 2) * scale);
-  // Container pad markings.
-  g.fillStyle = '#5a544b';
-  for (let z = -260; z < 260; z += 40) {
-    g.fillRect(toPx(HALF + 8), toPx(z), 84 * scale, 18 * scale);
+  // Harbor Yards apron: weathered concrete east of the city, where the containers sit.
+  {
+    const dockRng = makeRng(20261121);
+    const apronX = HALF;
+    const apronW = 100;
+    const apronZ0 = -HALF;
+    const apronH = HALF * 2;
+
+    g.fillStyle = '#7e786e';
+    g.fillRect(toPx(apronX), toPx(apronZ0), apronW * scale, apronH * scale);
+
+    // Poured concrete panels (8x8 world units) with per-slab tone variation and expansion joints.
+    const slab = 8;
+    for (let sx = apronX; sx < apronX + apronW; sx += slab) {
+      for (let sz = apronZ0; sz < HALF; sz += slab) {
+        const shade = dockRng();
+        if (shade < 0.42) {
+          g.fillStyle = `rgba(248,240,224,${(0.04 + dockRng() * 0.08).toFixed(3)})`;
+        } else if (shade < 0.84) {
+          g.fillStyle = `rgba(38,34,30,${(0.04 + dockRng() * 0.09).toFixed(3)})`;
+        } else {
+          g.fillStyle = `rgba(116,96,72,${(0.05 + dockRng() * 0.06).toFixed(3)})`;
+        }
+        g.fillRect(toPx(sx), toPx(sz), slab * scale, slab * scale);
+      }
+    }
+    g.strokeStyle = 'rgba(42,38,34,0.42)';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    for (let sx = apronX; sx <= apronX + apronW; sx += slab) {
+      g.moveTo(toPx(sx), toPx(apronZ0));
+      g.lineTo(toPx(sx), toPx(HALF));
+    }
+    for (let sz = apronZ0; sz <= HALF; sz += slab) {
+      g.moveTo(toPx(apronX), toPx(sz));
+      g.lineTo(toPx(apronX + apronW), toPx(sz));
+    }
+    g.stroke();
+
+    // Container pad zones with darker worn concrete.
+    g.fillStyle = 'rgba(62,57,50,0.38)';
+    for (let z = -260; z < 260; z += 40) {
+      g.fillRect(toPx(HALF + 8), toPx(z), 84 * scale, 18 * scale);
+    }
+
+    // Fine concrete speckle across the whole apron.
+    for (let i = 0; i < 6500; i++) {
+      const px = toPx(apronX + dockRng() * apronW);
+      const py = toPx(apronZ0 + dockRng() * apronH);
+      g.fillStyle = dockRng() < 0.5 ? 'rgba(245,238,225,0.12)' : 'rgba(28,25,22,0.15)';
+      g.fillRect(px, py, 2, 2);
+    }
+
+    // Oil, rust, and grime stains across the apron, denser in the dock fight yard (x 294-354, z 66-138).
+    for (let i = 0; i < 110; i++) {
+      const inYard = i < 55;
+      const cx = inYard ? 294 + dockRng() * 60 : apronX + 4 + dockRng() * (apronW - 8);
+      const cz = inYard ? 66 + dockRng() * 72 : apronZ0 + 8 + dockRng() * (apronH - 16);
+      const rx = (1.6 + dockRng() * 4.5) * scale;
+      const rz = (1.4 + dockRng() * 3.8) * scale;
+      const roll = dockRng();
+      g.fillStyle = roll < 0.45
+        ? `rgba(24,22,20,${(0.18 + dockRng() * 0.18).toFixed(2)})`
+        : roll < 0.78
+          ? `rgba(116,66,36,${(0.14 + dockRng() * 0.14).toFixed(2)})`
+          : `rgba(198,190,174,${(0.12 + dockRng() * 0.10).toFixed(2)})`;
+      g.beginPath();
+      g.ellipse(toPx(cx), toPx(cz), rx, rz, dockRng() * Math.PI, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Forklift / truck tire tracks running along the dock lanes and through the yard.
+    g.fillStyle = 'rgba(26,23,20,0.16)';
+    for (const tx of [290, 293.5, 341, 344.5]) {
+      g.fillRect(toPx(tx), toPx(-260), 1.1 * scale, 520 * scale);
+    }
+    for (const tz of [98, 101.5]) {
+      g.fillRect(toPx(284), toPx(tz), 68 * scale, 1.1 * scale);
+    }
+
+    // Concrete cracks in and around the container yard.
+    g.strokeStyle = 'rgba(30,27,24,0.48)';
+    g.lineWidth = 1.2;
+    for (let i = 0; i < 36; i++) {
+      let ax = 294 + dockRng() * 58;
+      let az = 68 + dockRng() * 68;
+      g.beginPath();
+      g.moveTo(toPx(ax), toPx(az));
+      const segs = 3 + Math.floor(dockRng() * 4);
+      for (let s = 0; s < segs; s++) {
+        ax += (dockRng() - 0.5) * 4.5;
+        az += (dockRng() - 0.5) * 4.5;
+        g.lineTo(toPx(ax), toPx(az));
+      }
+      g.stroke();
+    }
+
+    // Painted industrial safety markings in the dock container yard (x 298-350, z 70-134).
+    // Yellow perimeter box and loading-bay lanes.
+    g.strokeStyle = 'rgba(228,184,62,0.78)';
+    g.lineWidth = 2.6;
+    g.strokeRect(toPx(298), toPx(74), 48 * scale, 56 * scale);
+    // Inner bay dividers (dashed yellow).
+    g.save();
+    g.setLineDash([4 * scale, 3 * scale]);
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(toPx(298), toPx(102));
+    g.lineTo(toPx(346), toPx(102));
+    g.moveTo(toPx(322), toPx(74));
+    g.lineTo(toPx(322), toPx(130));
+    g.stroke();
+    g.restore();
+
+    // Diagonal yellow hazard stripes along north and south loading edges of the yard.
+    g.strokeStyle = 'rgba(228,184,62,0.72)';
+    g.lineWidth = 2.2;
+    for (const bandZ of [74, 127.5]) {
+      for (let hx = 299; hx < 345; hx += 3) {
+        g.beginPath();
+        g.moveTo(toPx(hx), toPx(bandZ));
+        g.lineTo(toPx(hx + 2), toPx(bandZ + 2.5));
+        g.stroke();
+      }
+    }
+
+    // Painted white pedestrian walkway stripes & bay stencil markers.
+    g.fillStyle = 'rgba(232,226,210,0.68)';
+    for (let wz = 80; wz <= 122; wz += 4.5) {
+      g.fillRect(toPx(300.5), toPx(wz), 3.2 * scale, 2 * scale);
+    }
+    // Corner L-brackets for container staging spots.
+    g.strokeStyle = 'rgba(235,230,218,0.62)';
+    g.lineWidth = 2;
+    for (const [bx, bz] of [[308, 82], [330, 82], [308, 110], [330, 110]]) {
+      g.strokeRect(toPx(bx), toPx(bz), 11 * scale, 12 * scale);
+    }
+
+    // Crisp white apron edge line bordering the east city road.
+    g.fillStyle = '#e8e8e8';
+    g.fillRect(toPx(HALF), toPx(apronZ0), 2, apronH * scale);
   }
-  g.fillStyle = '#e8e8e8';
-  g.fillRect(toPx(HALF), toPx(-HALF), 2, (HALF * 2) * scale);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
