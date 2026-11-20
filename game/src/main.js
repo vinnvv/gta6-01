@@ -7,6 +7,11 @@
 // is posed, then the world freezes and window.__done is set).
 
 import * as THREE from 'three';
+import { EffectComposer } from '../vendor/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/postprocessing/RenderPass.js';
+import { ShaderPass } from '../vendor/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from '../vendor/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/postprocessing/OutputPass.js';
 import { CFG, MISSIONS } from './config.js';
 import { Input } from './input.js';
 import { AudioEngine } from './audio.js';
@@ -44,43 +49,118 @@ renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xe89b4a, 200, 760);
 
-// Golden-hour sky dome: warm horizon, blue overhead.
+// Golden-hour sky dome: a custom shader, warm orange at the horizon
+// rising through pink to a purple dusk overhead, with a glowing sun disc
+// low in the west. The sun position below matches the directional light.
+const SUN_DIR = new THREE.Vector3(220, 260, 140).normalize();
 {
-  const geo = new THREE.SphereGeometry(900, 24, 16);
-  const top = new THREE.Color(0x6ea8dc);
-  const horizon = new THREE.Color(0xff9e50);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const t = Math.max(0, Math.min(1, (pos.getY(i) / 900 + 1) / 2));
-    // Steep falloff: a warm orange band hugs the horizon, blue only overhead.
-    c.copy(horizon).lerp(top, Math.pow(t, 2.2));
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const sky = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }));
+  const geo = new THREE.SphereGeometry(900, 32, 20);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      sunDir: { value: SUN_DIR },
+      topColor: { value: new THREE.Color(0x5f6a9e) },
+      midColor: { value: new THREE.Color(0xef8a5f) },
+      horizonColor: { value: new THREE.Color(0xff9e50) },
+      sunColor: { value: new THREE.Color(0xfff3c8) },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 vDir;
+      uniform vec3 sunDir;
+      uniform vec3 topColor;
+      uniform vec3 midColor;
+      uniform vec3 horizonColor;
+      uniform vec3 sunColor;
+      void main() {
+        float h = clamp(vDir.y, -0.08, 1.0);
+        vec3 col = mix(horizonColor, midColor, smoothstep(0.0, 0.28, h));
+        col = mix(col, topColor, smoothstep(0.22, 0.75, h));
+        float s = max(dot(normalize(vDir), normalize(sunDir)), 0.0);
+        col += sunColor * pow(s, 350.0) * 3.0;
+        col += vec3(1.0, 0.55, 0.25) * pow(s, 18.0) * 0.55;
+        col += vec3(1.0, 0.4, 0.55) * pow(s, 6.0) * 0.06;
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  });
+  const sky = new THREE.Mesh(geo, skyMat);
   scene.add(sky);
 }
 
 const sun = new THREE.DirectionalLight(0xffe0b3, 2.4);
 sun.position.set(220, 260, 140);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -320; sun.shadow.camera.right = 320;
 sun.shadow.camera.top = 320; sun.shadow.camera.bottom = -320;
 sun.shadow.camera.far = 900;
-sun.shadow.bias = -0.0004;
+sun.shadow.bias = -0.0002;
+sun.shadow.normalBias = 0.3;
 scene.add(sun);
 scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x8a6f4d, 0.85));
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2200);
 camera.position.set(SPAWN.x, 30, SPAWN.z + 60);
 
+// Post-processing: bloom for lit windows, the sun and neon, plus a warm
+// golden-hour grade and vignette. Vendored three r160 modules, all local.
+// If the composer fails to init for any reason, the game falls back to a
+// plain renderer.render so it never crashes.
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    vignette: { value: 0.2 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float vignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 col = c.rgb;
+      col = col * 0.94 + 0.03;
+      col = mix(col, col * vec3(1.05, 1.0, 0.94), 0.6);
+      float luma = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(vec3(luma), col, 1.08);
+      col = col * col * (3.0 - 2.0 * col) * 0.12 + col * 0.88;
+      float d = distance(vUv, vec2(0.5));
+      col *= 1.0 - vignette * smoothstep(0.45, 0.95, d);
+      gl_FragColor = vec4(col, c.a);
+    }`,
+};
+
+let composer = null;
+try {
+  composer = new EffectComposer(renderer);
+  composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.55, 0.85,
+  ));
+  composer.addPass(new ShaderPass(GradeShader));
+  composer.addPass(new OutputPass());
+} catch (err) {
+  composer = null;
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (composer) composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // --- Systems ---------------------------------------------------------------
@@ -558,7 +638,8 @@ function frame() {
     // Frozen frame behind the overlay.
   }
 
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
   input.endFrame();
 }
 

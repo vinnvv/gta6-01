@@ -19,11 +19,18 @@ export function roadLines() {
 }
 
 // Facade texture: a warm painted wall with a grid of lit windows.
+// Returns the wall map plus an emissive map (lit windows only, black
+// elsewhere) so the windows glow at dusk and bloom picks them up.
 function facadeTexture(rng, base, floors, cols) {
   const w = 128, h = 256;
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
   const g = cv.getContext('2d');
+  const ecv = document.createElement('canvas');
+  ecv.width = w; ecv.height = h;
+  const eg = ecv.getContext('2d');
+  eg.fillStyle = '#000000';
+  eg.fillRect(0, 0, w, h);
   g.fillStyle = base;
   g.fillRect(0, 0, w, h);
   // Slight vertical grime near the bottom.
@@ -32,15 +39,22 @@ function facadeTexture(rng, base, floors, cols) {
   grad.addColorStop(1, 'rgba(60,40,20,0.35)');
   g.fillStyle = grad;
   g.fillRect(0, 0, w, h);
-  // Windows.
+  // Windows. Lit windows are painted almost black in the diffuse map so
+  // their colour comes from the emissive map alone: otherwise the
+  // hemisphere sky light (pale blue) tints shaded faces cyan. Unlit
+  // windows stay dark slate in the map and get no emissive.
   const margin = 10, gapX = (w - margin * 2) / cols, gapY = (h - 18) / floors;
   for (let f = 0; f < floors; f++) {
     for (let c = 0; c < cols; c++) {
       const x = margin + c * gapX + 2;
       const y = 10 + f * gapY + 3;
       const lit = rng() < 0.28;
-      g.fillStyle = lit ? '#ffd98a' : '#2c3542';
+      g.fillStyle = lit ? '#232323' : '#2c3542';
       g.fillRect(x, y, gapX - 5, gapY - 8);
+      if (lit) {
+        eg.fillStyle = '#ffd98a';
+        eg.fillRect(x, y, gapX - 5, gapY - 8);
+      }
       g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fillRect(x, y, gapX - 5, 2);
     }
@@ -50,7 +64,9 @@ function facadeTexture(rng, base, floors, cols) {
   g.fillRect(0, h - 16, w, 16);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  const etex = new THREE.CanvasTexture(ecv);
+  etex.colorSpace = THREE.SRGBColorSpace;
+  return { map: tex, emissiveMap: etex };
 }
 
 // The whole ground as one texture: asphalt, roads, sidewalks, sand and the
@@ -478,8 +494,8 @@ export class City {
           if (this.buildings.some((o) => x < o.x1 + 3 && x + w > o.x0 - 3 && z < o.z1 + 3 && z + d > o.z0 - 3)) continue;
           const floors = Math.max(2, Math.round(h / 3.4));
           const cols = Math.max(2, Math.round(w / 4.5));
-          const tex = facadeTexture(makeRng(hashSeed(`${i},${j},${b}`)), pick(rng, palette), floors, cols);
-          const mat = new THREE.MeshLambertMaterial({ map: tex });
+          const { map, emissiveMap } = facadeTexture(makeRng(hashSeed(`${i},${j},${b}`)), pick(rng, palette), floors, cols);
+          const mat = new THREE.MeshLambertMaterial({ map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 1.2 });
           const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
           mesh.position.set(x + w / 2, h / 2, z + d / 2);
           this.scene.add(mesh);
@@ -509,10 +525,10 @@ export class City {
       }
     }
     // The Solmar Grand casino: a tall glass tower downtown, the mission 5 target.
-    const casinoTex = facadeTexture(makeRng(99), '#3f6d8e', 14, 8);
+    const { map: casinoMap, emissiveMap: casinoEmissive } = facadeTexture(makeRng(99), '#3f6d8e', 14, 8);
     const casino = new THREE.Mesh(
       new THREE.BoxGeometry(30, 52, 22),
-      new THREE.MeshLambertMaterial({ map: casinoTex }),
+      new THREE.MeshLambertMaterial({ map: casinoMap, emissiveMap: casinoEmissive, emissive: 0xffffff, emissiveIntensity: 1.2 }),
     );
     casino.position.set(63, 26, -7);
     this.scene.add(casino);
