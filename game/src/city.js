@@ -43,12 +43,20 @@ function facadeTexture(rng, base, floors, cols) {
   // their colour comes from the emissive map alone: otherwise the
   // hemisphere sky light (pale blue) tints shaded faces cyan. Unlit
   // windows stay dark slate in the map and get no emissive.
+  // A building that rolls zero lit windows reads as a dead black slab, so
+  // the pass below guarantees a minimum: it only touches buildings that
+  // rolled too few, and the random calls above stay in the same order, so
+  // every other building keeps its exact pattern.
   const margin = 10, gapX = (w - margin * 2) / cols, gapY = (h - 18) / floors;
+  const wins = [];
+  let litCount = 0;
   for (let f = 0; f < floors; f++) {
     for (let c = 0; c < cols; c++) {
       const x = margin + c * gapX + 2;
       const y = 10 + f * gapY + 3;
       const lit = rng() < 0.28;
+      if (lit) litCount++;
+      wins.push({ x, y, w: gapX - 5, h: gapY - 8, lit });
       g.fillStyle = lit ? '#232323' : '#2c3542';
       g.fillRect(x, y, gapX - 5, gapY - 8);
       if (lit) {
@@ -57,6 +65,21 @@ function facadeTexture(rng, base, floors, cols) {
       }
       g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fillRect(x, y, gapX - 5, 2);
+    }
+  }
+  const minLit = Math.max(2, Math.floor(wins.length * 0.25));
+  if (litCount < minLit) {
+    for (const win of wins) {
+      if (litCount >= minLit) break;
+      if (win.lit) continue;
+      win.lit = true;
+      litCount++;
+      g.fillStyle = '#232323';
+      g.fillRect(win.x, win.y, win.w, win.h);
+      eg.fillStyle = '#ffd98a';
+      eg.fillRect(win.x, win.y, win.w, win.h);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(win.x, win.y, win.w, 2);
     }
   }
   // Ground floor: shopfront band.
@@ -258,6 +281,23 @@ function palmTree() {
   return group;
 }
 
+function planter() {
+  const group = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(1.7, 0.8, 1.7),
+    new THREE.MeshLambertMaterial({ color: 0xb9a98c }),
+  );
+  box.position.y = 0.4;
+  group.add(box);
+  const shrub = new THREE.Mesh(
+    new THREE.BoxGeometry(1.4, 0.7, 1.4),
+    new THREE.MeshLambertMaterial({ color: 0x4a7d3a }),
+  );
+  shrub.position.y = 1.1;
+  group.add(shrub);
+  return group;
+}
+
 function streetLight() {
   const group = new THREE.Group();
   const mat = new THREE.MeshLambertMaterial({ color: 0x3a3f45 });
@@ -307,6 +347,7 @@ export class City {
     this.buildGround();
     this.buildStreetDetail();
     this.buildBlocks();
+    this.buildSidewalkProps();
     this.buildBeachProps();
     this.buildPort();
     this.buildLights();
@@ -544,6 +585,23 @@ export class City {
     this.scene.add(sign);
   }
 
+  // Sidewalk props for the street shot's block (5,7): it holds one
+  // building at its south end and the rest was bare sidewalk, which is why
+  // the right half of the street frame read as an empty cream plane.
+  // Fixed positions, no colliders (like the other palms and lamps), so the
+  // player and traffic pass through them as they do everywhere else.
+  // They sit north of building #50 and behind the cover camera, so the
+  // other three shots are unaffected.
+  buildSidewalkProps() {
+    const add = (obj, x, z) => {
+      obj.position.set(x, 0, z);
+      this.scene.add(obj);
+    };
+    for (const [x, z] of [[76, 234], [92, 224], [108, 214], [118, 232]]) add(palmTree(), x, z);
+    for (const [x, z] of [[72, 218], [72, 236]]) add(streetLight(), x, z);
+    for (const [x, z] of [[80, 228], [100, 220], [112, 236]]) add(planter(), x, z);
+  }
+
   buildBeachProps() {
     const rng = this.rng;
     // Palm rows along the Strip and umbrellas on the sand.
@@ -602,6 +660,74 @@ export class City {
       const jib = new THREE.Mesh(new THREE.BoxGeometry(30, 1.5, 1.5), craneMat);
       jib.position.set(345, 25, z);
       this.scene.add(leg1, leg2, beam, jib);
+    }
+    // The dock fight yard: a dense, fixed cluster around (312, 100) where
+    // the Los Buitres shootouts happen, so the mission shot reads as a
+    // working dock, not an empty apron. Props ring the fight area; the
+    // middle stays open so Rico and the gang can move. Deterministic, from
+    // its own seed, so the 22 random containers above never move.
+    {
+      const dockRng = makeRng(4242);
+      const dockCols = ['#c94f3d', '#3d7ac9', '#4fae5a', '#d8a13c'];
+      const addBox = (x, z, w, h, d, color, rotY = 0) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+        m.position.set(x, h / 2, z);
+        m.rotation.y = rotY;
+        m.castShadow = true;
+        this.scene.add(m);
+        const hw = (rotY === 0 ? w : d) / 2, hd = (rotY === 0 ? d : w) / 2;
+        this.colliders.push({ x0: x - hw, z0: z - hd, x1: x + hw, z1: z + hd });
+        return m;
+      };
+      // Container walls east, north and south of the fight area.
+      for (const z of [66, 82, 98, 114, 130]) {
+        addBox(350, z, 2.6, 2.6, 12, pick(dockRng, dockCols), Math.PI / 2);
+      }
+      addBox(350, 82, 2.6, 2.6, 12, pick(dockRng, dockCols), Math.PI / 2).position.y = 3.9;
+      addBox(350, 114, 2.6, 2.6, 12, pick(dockRng, dockCols), Math.PI / 2).position.y = 3.9;
+      for (const x of [298, 312, 326]) addBox(x, 70, 12, 2.6, 2.6, pick(dockRng, dockCols));
+      for (const x of [300, 316, 332]) addBox(x, 134, 12, 2.6, 2.6, pick(dockRng, dockCols));
+      // Crates at the corners of the yard.
+      for (const [x, z] of [[296, 72], [340, 132], [296, 124], [344, 68], [298, 136]]) {
+        addBox(x, z, 2.2, 2.2, 2.2, 0x9a7b4f);
+      }
+      addBox(340, 132, 2.2, 2.2, 2.2, 0x9a7b4f).position.y = 3.3;
+      // Barrel clusters.
+      const barrelMat = new THREE.MeshLambertMaterial({ color: 0x3d7ac9 });
+      const barrelMat2 = new THREE.MeshLambertMaterial({ color: 0xc94f3d });
+      for (const [cx, cz] of [[342, 120], [302, 66], [338, 84]]) {
+        for (let i = 0; i < 3; i++) {
+          const b = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2, 10), i % 2 ? barrelMat : barrelMat2);
+          b.position.set(cx + (i - 1) * 2, 1, cz + (i % 2 ? 1 : -1));
+          b.castShadow = true;
+          this.scene.add(b);
+          this.colliders.push({ x0: b.position.x - 0.9, z0: b.position.z - 0.9, x1: b.position.x + 0.9, z1: b.position.z + 0.9 });
+        }
+      }
+      // Two parked trucks: cab plus trailer, static props.
+      const truck = (x, z, rotY) => {
+        const g = new THREE.Group();
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 2.2), new THREE.MeshLambertMaterial({ color: 0xd8d3c8 }));
+        cab.position.set(0, 1.3, 3.6);
+        const trailer = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3, 6), new THREE.MeshLambertMaterial({ color: 0xe8e8e8 }));
+        trailer.position.set(0, 1.5, -1);
+        g.add(cab, trailer);
+        g.position.set(x, 0, z);
+        g.rotation.y = rotY;
+        g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        this.scene.add(g);
+        this.colliders.push({ x0: x - 4, z0: z - 4, x1: x + 4, z1: z + 4 });
+      };
+      truck(360, 100, Math.PI / 2);
+      truck(296, 142, 0);
+      // A fence along the east edge of the apron.
+      const fenceMat = new THREE.MeshLambertMaterial({ color: 0x8a8f94 });
+      for (let z = 60; z <= 140; z += 8) {
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.2, 8), fenceMat);
+        seg.position.set(370, 1.1, z);
+        this.scene.add(seg);
+        this.colliders.push({ x0: 369.8, z0: z - 4, x1: 370.2, z1: z + 4 });
+      }
     }
   }
 

@@ -23,7 +23,7 @@ import { Pedestrians } from './pedestrians.js';
 import { Police } from './police.js';
 import { Combat } from './combat.js';
 import { Effects } from './effects.js';
-import { Missions } from './missions.js';
+import { Missions, Jobs } from './missions.js';
 import { HUD } from './hud.js';
 import { applyShot } from './shots.js';
 
@@ -173,6 +173,7 @@ const effects = new Effects(scene);
 const combat = new Combat(scene, effects);
 const player = new Player(scene, SPAWN.x, SPAWN.z);
 let missions = new Missions(scene, city);
+let jobs = new Jobs(scene, city);
 const audio = new AudioEngine();
 const input = new Input(canvas);
 
@@ -185,6 +186,7 @@ let lastShootCrime = -99;
 let saveTimer = 0;
 let regTimer = 0;
 let prevHealth = 100;
+let prevWanted = 0;
 let shotFrames = 0;
 let shotFrozen = false;
 let shotStaged = false;
@@ -192,7 +194,7 @@ let menuAngle = 0;
 
 // The object the shot stager poses.
 const game = {
-  player, traffic, police, combat, missions, city, scene,
+  player, traffic, police, combat, missions, jobs, city, scene,
   get camYaw() { return camYaw; },
   set camYaw(v) { camYaw = v; },
   get camPitch() { return camPitch; },
@@ -292,6 +294,9 @@ function resetGame() {
   missions.dispose();
   missions = new Missions(scene, city);
   game.missions = missions;
+  jobs.dispose();
+  jobs = new Jobs(scene, city);
+  game.jobs = jobs;
   player.pos.set(SPAWN.x, 0, SPAWN.z);
   player.heading = 0.8;
   player.vel.x = 0; player.vel.z = 0;
@@ -304,6 +309,7 @@ function resetGame() {
   player.mesh.visible = true;
   state.cash = 0;
   prevHealth = 100;
+  prevWanted = 0;
   camYaw = 2.4;
   camPitch = 0.3;
   hud.setCash(0);
@@ -324,7 +330,7 @@ function respawn() {
   state.cash = Math.floor(state.cash * 0.9);
   hud.setCash(state.cash);
   // A failed dock fight restarts at the docks, not at an empty room.
-  if (missions.current === 3 && missions.stage === 1) {
+  if ((missions.current === 3 || missions.current === 7) && missions.stage === 1) {
     missions.stage = 0;
     missions.startStage();
   }
@@ -339,6 +345,7 @@ function missionCtx() {
     player, traffic, police, combat, audio, effects,
     now: gameTime,
     addCash: (n) => { state.cash += n; hud.setCash(state.cash); },
+    showMessage: (t, s) => hud.showMessage(t, s),
     onMissionComplete: (m) => {
       audio.missionDone();
       hud.showMessage(`Mission complete: ${m.name}. +$${m.reward}.`, 5);
@@ -441,7 +448,7 @@ function updateCamera(dt) {
   const inCar = !!player.inCar;
   const focus = inCar ? player.inCar.pos : player.pos;
   camTarget.set(focus.x, (inCar ? 2.0 : 1.7), focus.z);
-  const dist = inCar ? CAM_DIST_CAR : CAM_DIST_FOOT;
+  const dist = game.camDist ?? (inCar ? CAM_DIST_CAR : CAM_DIST_FOOT);
   // While driving the camera settles behind the car unless the player looks.
   // Staged screenshots keep the camera where the shot put it.
   if (inCar && !shotName) {
@@ -526,6 +533,7 @@ function stepPlaying(dt) {
   police.update(dt, player, playerCar, gameTime);
   combat.update(dt, player, gameTime);
   missions.update(dt, missionCtx());
+  jobs.update(dt, missionCtx());
   effects.update(dt);
   audio.siren(police.sirenNear && police.wanted > 0);
 
@@ -557,6 +565,12 @@ function stepPlaying(dt) {
   hud.setHealth(player.health);
   hud.setCash(state.cash);
   hud.setWanted(police.wanted);
+  hud.setJobs(jobs.doneCount, jobs.totalCount);
+  // Six stars is a full manhunt: say so once, when the heat hits it.
+  if (police.wanted === 6 && prevWanted !== 6) {
+    hud.showMessage('SIX STARS. Full manhunt. Every unit in Solmar is after you.', 5);
+  }
+  prevWanted = police.wanted;
   const obj = missions.objectiveText();
   hud.setObjective(obj.title, obj.text);
   hud.setSpeed(playerCar ? playerCar.speed : 0, !!playerCar);
@@ -666,6 +680,7 @@ if (shotName) {
 window.__game = {
   player, police, traffic, combat, peds, city, state,
   get missions() { return missions; },
+  get jobs() { return jobs; },
   get screen() { return screen; },
   get camYaw() { return camYaw; },
   get gameTime() { return gameTime; },

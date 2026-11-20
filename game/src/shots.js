@@ -38,10 +38,22 @@ export function applyShot(game, name) {
     missions.messageTimer = 99;
   } else if (name === 'street') {
     // On foot by the beach road: traffic, pedestrians, the Strip behind.
-    player.pos.set(70, 0, 260);
-    player.heading = Math.PI * 0.9;
-    game.camYaw = Math.PI * 0.9;
+    // Kept clear of the Strip Liquor shop (63,259): standing on its marker
+    // would start a hold-up and fill the shot with the pink robbery beacon.
+    // Rico stands on the curb by the road (not mid-sidewalk), the camera
+    // sits 10 units back so he reads as a person instead of a grey slab,
+    // and the yaw is swung 8 degrees west: the old framing put the shaded
+    // west face of building #50 right on the frame's right edge, where it
+    // read as a black-windowed slab. A taxi is staged on the road ahead
+    // because traffic positions drift between runs.
+    player.pos.set(67, 0, 238);
+    player.heading = 2.97;
+    game.camYaw = 2.97;
     game.camPitch = 0.22;
+    game.camDist = 10;
+    const taxi = new Car(scene, 'taxi', 0xf2b705, 63, 215, Math.PI);
+    taxi.speed = 11;
+    traffic.cars.push(taxi);
     missions.current = 0;
     missions.stage = 0;
     missions.active = true;
@@ -49,14 +61,17 @@ export function applyShot(game, name) {
     missions.messageTimer = 99;
   } else if (name === 'mission') {
     // The dock shootout: Rico on foot with his pistol, Los Buitres ahead.
-    player.pos.set(296, 0, 116);
-    player.heading = Math.PI / 2;
+    // Rico stands south-west of the gang cluster and faces it (heading
+    // ~2.55), so all six gunmen and the container walls are in frame.
+    player.pos.set(296, 0, 128);
+    player.heading = 2.55;
     player.weapon = 'pistol';
-    game.camYaw = Math.PI / 2;
+    game.camYaw = 2.55;
     game.camPitch = 0.22;
     police.addHeat(2, 0);
     combat.spawnGang([
-      { x: 306, z: 96 }, { x: 318, z: 104 }, { x: 312, z: 118 },
+      { x: 300, z: 88 }, { x: 318, z: 104 }, { x: 306, z: 118 },
+      { x: 326, z: 92 }, { x: 312, z: 76 }, { x: 334, z: 112 },
     ]);
     missions.setMarker(312, 100);
     missions.current = 3;
