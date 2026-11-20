@@ -23,6 +23,8 @@ export function writeSave(state) {
       missionsDone: state.missionsDone,
       currentMission: state.currentMission,
       hasPistol: state.hasPistol,
+      weapons: state.weapons || [],
+      armor: state.armor || 0,
       playerPos: state.playerPos,
       muted: state.muted,
       savedAt: Date.now(),

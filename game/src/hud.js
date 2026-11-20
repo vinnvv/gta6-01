@@ -10,7 +10,9 @@ export class HUD {
     this.root.innerHTML = `
       <div id="hud-top-left">
         <div id="health-wrap"><div id="health-bar"></div><span id="health-text">100</span></div>
+        <div id="armor-wrap"><div id="armor-bar"></div><span id="armor-text">0</span></div>
         <div id="cash">$0</div>
+        <div id="jobs"></div>
       </div>
       <div id="hud-top-right"><div id="stars"></div><div id="clock">18:24</div></div>
       <div id="objective"><div id="obj-title"></div><div id="obj-text"></div></div>
@@ -31,9 +33,9 @@ export class HUD {
         </div>
         <div id="how" class="hidden">
           <p><b>WASD</b> move / drive &nbsp; <b>Mouse</b> look (click to lock) &nbsp; <b>Shift</b> run</p>
-          <p><b>Space</b> jump / handbrake &nbsp; <b>E</b> enter or leave a car &nbsp; <b>Left click</b> shoot</p>
-          <p><b>F</b> punch &nbsp; <b>R</b> reload &nbsp; <b>1 / 2</b> fists / pistol &nbsp; <b>M</b> mute &nbsp; <b>Esc</b> pause</p>
-          <p>Steal cars, lose the cops, run missions for Sofia. Your progress saves automatically.</p>
+          <p><b>Space</b> jump / handbrake &nbsp; <b>E</b> enter or leave a car &nbsp; <b>Left click</b> shoot (hold for full-auto)</p>
+          <p><b>F</b> punch &nbsp; <b>R</b> reload &nbsp; <b>1-5</b> fists / pistol / shotgun / SMG / rifle &nbsp; <b>M</b> mute &nbsp; <b>Esc</b> pause</p>
+          <p>Steal cars, lose the cops, run missions for Sofia. Guns, health kits and armor vests are stashed around the city: walk over one to grab it.</p>
         </div>
       </div>
       <div id="pause" class="overlay hidden">
@@ -97,12 +99,23 @@ export class HUD {
     this.root.querySelector('#vignette').style.opacity = h < 30 ? String((30 - h) / 30 * 0.55) : '0';
   }
 
+  setArmor(a) {
+    const bar = this.root.querySelector('#armor-bar');
+    bar.style.width = Math.max(0, a) + '%';
+    this.root.querySelector('#armor-text').textContent = Math.ceil(Math.max(0, a));
+    this.root.querySelector('#armor-wrap').style.display = a > 0 ? 'block' : 'none';
+  }
+
   setCash(c) { this.root.querySelector('#cash').textContent = '$' + Math.floor(c).toLocaleString('en-US'); }
 
   setWanted(n) {
     const stars = this.root.querySelector('#stars');
-    stars.textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
-    stars.style.color = n > 0 ? '#ffd23e' : 'rgba(255,255,255,0.35)';
+    stars.textContent = '★'.repeat(n) + '☆'.repeat(6 - n);
+    stars.style.color = n >= 6 ? '#ff4d4d' : n > 0 ? '#ffd23e' : 'rgba(255,255,255,0.35)';
+  }
+
+  setJobs(done, total) {
+    this.root.querySelector('#jobs').textContent = total > 0 ? 'JOBS ' + done + '/' + total : '';
   }
 
   setObjective(title, text) {
@@ -117,7 +130,7 @@ export class HUD {
   setWeapon(name, ammo, reloading, inCar = false) {
     this.root.querySelector('#weapon').textContent = reloading ? name + ' (reloading...)' : (ammo === null ? name : `${name}  ${ammo}`);
     // The crosshair is for shooting on foot, not for driving.
-    this.root.querySelector('#crosshair').style.display = name === 'P9 Pistol' && !inCar ? 'block' : 'none';
+    this.root.querySelector('#crosshair').style.display = name !== 'Fists' && !inCar ? 'block' : 'none';
   }
 
   showMessage(text, seconds = 4) {

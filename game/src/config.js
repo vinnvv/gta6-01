@@ -31,6 +31,7 @@ export const CFG = {
     radius: 0.55,
     height: 1.8,
     maxHealth: 100,
+    maxArmor: 100,
     regenDelay: 5,
     regenRate: 8,
     punchDamage: 12,
@@ -66,6 +67,8 @@ export const CFG = {
       { stars: 3, cars: 3, cops: 2 },
       { stars: 4, cars: 4, cops: 3 },
       { stars: 5, cars: 5, cops: 4 },
+      // Six stars: full manhunt. Every unit in the city is after Rico.
+      { stars: 6, cars: 6, cops: 6 },
     ],
   },
 
@@ -82,6 +85,13 @@ export const CFG = {
   weapons: {
     fists: { name: 'Fists', damage: 12, range: 2.1, rate: 0.45, auto: false },
     pistol: { name: 'P9 Pistol', damage: 34, range: 90, rate: 0.22, auto: false, mag: 12, reload: 1.1 },
+    // Close-range king: seven pellets per shell, devastating up close,
+    // useless past a block. Slow to pump, slow to reload.
+    shotgun: { name: 'Shotgun', damage: 14, pellets: 7, spread: 0.085, range: 30, rate: 0.9, auto: false, mag: 6, reload: 2.0 },
+    // Bullet hose: weak per round, but it never stops while held.
+    smg: { name: 'SMG', damage: 12, range: 55, rate: 0.09, auto: true, mag: 30, reload: 1.4 },
+    // The all-rounder: solid damage, long reach, full auto.
+    rifle: { name: 'Assault Rifle', damage: 26, range: 110, rate: 0.13, auto: true, mag: 30, reload: 1.7 },
   },
 
   // Golden hour: the whole game plays at one warm late afternoon.
@@ -108,9 +118,9 @@ export const CFG = {
 };
 
 // Mission rewards in dollars.
-export const MISSION_REWARDS = [500, 800, 1000, 1500, 3000];
+export const MISSION_REWARDS = [500, 800, 1000, 1500, 3000, 1200, 1500, 2000, 2500, 5000];
 
-// The five story missions. Each has an id, a name, a briefing and a list of
+// The ten story missions. Each has an id, a name, a briefing and a list of
 // stages; a stage is complete when its check passes.
 export const MISSIONS = [
   {
@@ -142,5 +152,35 @@ export const MISSIONS = [
     name: 'The Big Score',
     reward: 3000,
     briefing: 'Sofia: The Solmar Grand keeps its weekend take in the back. We go in, we take it, we leave by boat. This is the one, Rico.',
+  },
+  {
+    id: 'm6',
+    name: 'Smuggler\'s Run',
+    reward: 1200,
+    briefing: 'Sofia: A blue van is waiting at Harbor Yards with a delivery that cannot wait. Pick it up and bring it to the Anchor. No stops, no cops.',
+  },
+  {
+    id: 'm7',
+    name: 'Street Kings',
+    reward: 1500,
+    briefing: 'Sofia: The Strip racers think nobody can beat them. Prove them wrong. Start line on the Strip, three checkpoints, finish downtown. Drive like you mean it.',
+  },
+  {
+    id: 'm8',
+    name: 'El Halcon\'s Debt',
+    reward: 2000,
+    briefing: 'Sofia: El Halcon himself is at the docks with his whole crew, and he owes us. Go in armed. Eight gunmen, and the man in the gold shirt is the one who matters.',
+  },
+  {
+    id: 'm9',
+    name: 'The Getaway',
+    reward: 2500,
+    briefing: 'Sofia: Four stars, Rico. The whole Solmar PD is on you after that van job. Lose them, stay out of sight, then lay low at the Anchor.',
+  },
+  {
+    id: 'm10',
+    name: 'The El Halcon Job',
+    reward: 5000,
+    briefing: 'Sofia: The Solmar Grand, one more time, and this time it is El Halcon\'s money in the back room. Take it and the whole city will come for you. Six stars. Run for the boat and do not stop.',
   },
 ];

@@ -23,7 +23,7 @@ export function applyShot(game, name) {
     traffic.cars.push(comet);
     player.enterCar(comet);
     comet.speed = 30;
-    player.weapon = 'pistol';
+    player.setWeapon('pistol');
     police.addHeat(3, 0);
     const p1 = new Car(scene, 'police', 0xe8e8e8, 56, 158, 0);
     const p2 = new Car(scene, 'police', 0xe8e8e8, 71, 164, 0);
@@ -65,7 +65,7 @@ export function applyShot(game, name) {
     // ~2.55), so all six gunmen and the container walls are in frame.
     player.pos.set(296, 0, 128);
     player.heading = 2.55;
-    player.weapon = 'pistol';
+    player.setWeapon('pistol');
     game.camYaw = 2.55;
     game.camPitch = 0.22;
     police.addHeat(2, 0);

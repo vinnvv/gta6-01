@@ -23,6 +23,7 @@ import { Pedestrians } from './pedestrians.js';
 import { Police } from './police.js';
 import { Combat } from './combat.js';
 import { Effects } from './effects.js';
+import { Pickups } from './pickups.js';
 import { Missions, Jobs } from './missions.js';
 import { HUD } from './hud.js';
 import { applyShot } from './shots.js';
@@ -171,6 +172,7 @@ const peds = new Pedestrians(scene, city);
 const police = new Police(scene, city);
 const effects = new Effects(scene);
 const combat = new Combat(scene, effects);
+const pickups = new Pickups(scene);
 const player = new Player(scene, SPAWN.x, SPAWN.z);
 let missions = new Missions(scene, city);
 let jobs = new Jobs(scene, city);
@@ -194,7 +196,7 @@ let menuAngle = 0;
 
 // The object the shot stager poses.
 const game = {
-  player, traffic, police, combat, missions, jobs, city, scene,
+  player, traffic, police, combat, pickups, missions, jobs, city, scene,
   get camYaw() { return camYaw; },
   set camYaw(v) { camYaw = v; },
   get camPitch() { return camPitch; },
@@ -211,7 +213,9 @@ function saveGame() {
     cash: state.cash,
     missionsDone: missions.done ? MISSIONS.length : Math.max(0, missions.current),
     currentMission: missions.done ? MISSIONS.length : Math.max(0, missions.current),
-    hasPistol: player.hasPistol,
+    hasPistol: !!player.owned.pistol,
+    weapons: Object.keys(player.owned).filter((k) => player.owned[k]),
+    armor: Math.round(player.armor),
     playerPos: { x: player.pos.x, z: player.pos.z },
     muted: state.muted,
   });
@@ -220,8 +224,19 @@ function saveGame() {
 function loadIntoGame(save) {
   state.cash = save.cash || 0;
   state.muted = !!save.muted;
-  player.hasPistol = save.hasPistol !== false;
-  player.weapon = player.hasPistol ? 'pistol' : 'fists';
+  // Old saves only knew the pistol; new ones list every owned gun.
+  const owned = save.weapons && save.weapons.length
+    ? save.weapons
+    : (save.hasPistol !== false ? ['pistol'] : []);
+  player.owned = { pistol: false, shotgun: false, smg: false, rifle: false };
+  for (const id of owned) player.owned[id] = true;
+  player.hasPistol = !!player.owned.pistol;
+  player.ammoByWeapon = { pistol: CFG.weapons.pistol.mag };
+  for (const id of owned) {
+    if (id !== 'pistol') player.ammoByWeapon[id] = CFG.weapons[id].mag;
+  }
+  player.armor = Math.min(CFG.player.maxArmor, save.armor || 0);
+  player.setWeapon(player.owned.pistol ? 'pistol' : 'fists');
   if (save.playerPos) player.pos.set(save.playerPos.x, 0, save.playerPos.z);
   const idx = save.currentMission || 0;
   if (idx >= MISSIONS.length) {
@@ -301,12 +316,15 @@ function resetGame() {
   player.heading = 0.8;
   player.vel.x = 0; player.vel.z = 0;
   player.health = 100;
+  player.armor = 0;
   player.dead = false;
-  player.weapon = 'fists';
+  player.owned = { pistol: true };
+  player.ammoByWeapon = { pistol: CFG.weapons.pistol.mag };
+  player.setWeapon('fists');
   player.hasPistol = true;
-  player.ammo = CFG.weapons.pistol.mag;
   player.reloadTimer = 0;
   player.mesh.visible = true;
+  pickups.reset();
   state.cash = 0;
   prevHealth = 100;
   prevWanted = 0;
@@ -386,31 +404,35 @@ function tryEnterExitCar() {
   }
 }
 
-function handleShotResult(hit) {
-  if (!hit || hit === 'reload') return;
+function handleShotResult(hits) {
+  if (!hits || hits === 'reload') return;
   audio.gunshot();
-  if (hit.kind === 'ped' && hit.ref && !hit.ref.dead) {
-    hit.ref.kill();
-    peds.addThreat(player.pos.x, player.pos.z);
-    police.addHeat(1, gameTime);
-  } else if (hit.kind === 'enemy' && hit.ref) {
-    combat.damageEnemy(hit.ref, CFG.weapons.pistol.damage);
-    if (hit.ref.dead) {
-      state.cash += 25;
-      hud.setCash(state.cash);
-      hud.showMessage('Los Buitres gunman down. +$25.', 3);
+  // One trigger pull can land several hits (a shotgun's pellets); each one
+  // deals its own damage, then the heat check runs once for the whole shot.
+  for (const hit of hits) {
+    if (hit.kind === 'ped' && hit.ref && !hit.ref.dead) {
+      hit.ref.kill();
+      peds.addThreat(player.pos.x, player.pos.z);
+      police.addHeat(1, gameTime);
+    } else if (hit.kind === 'enemy' && hit.ref) {
+      combat.damageEnemy(hit.ref, hit.damage);
+      if (hit.ref.dead) {
+        state.cash += 25;
+        hud.setCash(state.cash);
+        hud.showMessage('Los Buitres gunman down. +$25.', 3);
+      }
+    } else if (hit.kind === 'car' && hit.ref) {
+      const car = hit.ref;
+      car.damage(hit.damage);
+      if (car.dead) {
+        effects.burst(car.pos.clone().setY(1), 0xff7a2a, 26, 9, 5);
+        effects.smoke(car.pos.clone().setY(1.5));
+        if (police.cars.includes(car)) police.addHeat(1, gameTime);
+      }
+    } else if (hit.kind === 'cop' && hit.ref) {
+      const result = police.damageCop(hit.ref, hit.damage, gameTime);
+      if (result === 'dead') hud.showMessage('You shot a cop. The whole city is after you.', 4);
     }
-  } else if (hit.kind === 'car' && hit.ref) {
-    const car = hit.ref;
-    car.damage(CFG.weapons.pistol.damage);
-    if (car.dead) {
-      effects.burst(car.pos.clone().setY(1), 0xff7a2a, 26, 9, 5);
-      effects.smoke(car.pos.clone().setY(1.5));
-      if (police.cars.includes(car)) police.addHeat(1, gameTime);
-    }
-  } else if (hit.kind === 'cop' && hit.ref) {
-    const result = police.damageCop(hit.ref, CFG.weapons.pistol.damage, gameTime);
-    if (result === 'dead') hud.showMessage('You shot a cop. The whole city is after you.', 4);
   }
   // Firing near the police is a crime, at most once every five seconds.
   if (gameTime - lastShootCrime > 5) {
@@ -508,17 +530,40 @@ function stepPlaying(dt) {
     audio.setMuted(state.muted);
     hud.showMessage(state.muted ? 'Sound off.' : 'Sound on.', 2);
   }
-  if (input.hit('Digit1')) { player.weapon = 'fists'; }
-  if (input.hit('Digit2') && player.hasPistol) { player.weapon = 'pistol'; }
-  if (input.hit('KeyR') && player.weapon === 'pistol' && player.ammo < CFG.weapons.pistol.mag) {
-    player.reloadTimer = CFG.weapons.pistol.reload;
-    player.ammo = CFG.weapons.pistol.mag;
-  }
-  if (!player.inCar && player.weapon === 'pistol' && input.consumeClick()) {
+  if (input.hit('Digit1')) player.setWeapon('fists');
+  if (input.hit('Digit2') && player.owned.pistol) player.setWeapon('pistol');
+  if (input.hit('Digit3') && player.owned.shotgun) player.setWeapon('shotgun');
+  if (input.hit('Digit4') && player.owned.smg) player.setWeapon('smg');
+  if (input.hit('Digit5') && player.owned.rifle) player.setWeapon('rifle');
+  if (input.hit('KeyR')) player.reloadCurrent();
+  // Semi-auto guns fire on a click; full-auto guns keep firing while the
+  // trigger is held down.
+  const clicked = input.consumeClick();
+  const gun = CFG.weapons[player.weapon];
+  if (!player.inCar && gun && gun.mag && ((gun.auto && input.mouseDown) || (!gun.auto && clicked))) {
     handleShotResult(combat.playerShoot(camera, player, gameTime));
   }
   if (!player.inCar && player.weapon === 'fists' && input.hit('KeyF')) {
     handlePunchResult(combat.punch(player, peds, gameTime));
+  }
+  // Weapon and supply caches on the ground.
+  if (!player.inCar) {
+    pickups.update(dt, player, (spec) => {
+      if (spec.kind === 'gun') {
+        const w = CFG.weapons[spec.id];
+        const first = player.giveWeapon(spec.id, w.mag);
+        hud.showMessage(first ? `Picked up ${spec.label}!` : `${spec.label} ammo +${w.mag}.`, 3);
+        audio.blip(660, 0.12, 'square', 0.12);
+      } else if (spec.kind === 'health') {
+        player.heal(50);
+        hud.showMessage('Health Kit +50.', 3);
+        audio.blip(520, 0.12, 'sine', 0.12);
+      } else {
+        player.addArmor(50);
+        hud.showMessage('Armor Vest +50.', 3);
+        audio.blip(440, 0.12, 'sine', 0.12);
+      }
+    });
   }
   if (input.hit('Escape')) {
     screen = 'paused';
@@ -563,6 +608,7 @@ function stepPlaying(dt) {
 
   // HUD.
   hud.setHealth(player.health);
+  hud.setArmor(player.armor);
   hud.setCash(state.cash);
   hud.setWanted(police.wanted);
   hud.setJobs(jobs.doneCount, jobs.totalCount);
@@ -574,8 +620,8 @@ function stepPlaying(dt) {
   const obj = missions.objectiveText();
   hud.setObjective(obj.title, obj.text);
   hud.setSpeed(playerCar ? playerCar.speed : 0, !!playerCar);
-  const wName = player.weapon === 'pistol' ? CFG.weapons.pistol.name : CFG.weapons.fists.name;
-  hud.setWeapon(wName, player.weapon === 'pistol' ? player.ammo : null, player.reloadTimer > 0, !!playerCar);
+  const gunCfg = CFG.weapons[player.weapon];
+  hud.setWeapon(gunCfg.name, gunCfg.mag ? player.ammo : null, player.reloadTimer > 0, !!playerCar);
   hud.updateMessage(dt);
   hud.drawMinimap({
     city,
@@ -678,7 +724,7 @@ if (shotName) {
 
 // Headless tests and screenshots read the game through this handle.
 window.__game = {
-  player, police, traffic, combat, peds, city, state,
+  player, police, traffic, combat, pickups, peds, city, state,
   get missions() { return missions; },
   get jobs() { return jobs; },
   get screen() { return screen; },

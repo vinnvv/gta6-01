@@ -43,36 +43,59 @@ export class Combat {
     return { point: hit.point, distance: hit.distance, ...info };
   }
 
-  // The player's pistol shot, from the camera through the crosshair.
+  // The player's shot, from the camera through the crosshair, with
+  // whichever gun is in hand. A shotgun fires a fan of pellets, each its
+  // own raycast; anything else fires one round. Returns the hits (each
+  // carrying the damage it deals), 'reload' when the magazine ran dry, or
+  // null while the gun is busy.
   playerShoot(camera, player, now) {
-    const w = CFG.weapons.pistol;
+    const w = CFG.weapons[player.weapon];
+    if (!w || !w.mag) return null;
     if (player.fireTimer > 0 || player.reloadTimer > 0) return null;
     if (player.ammo <= 0) {
       player.reloadTimer = w.reload;
       player.ammo = w.mag;
+      player.ammoByWeapon[player.weapon] = w.mag;
       return 'reload';
     }
     player.fireTimer = w.rate;
     player.ammo -= 1;
+    player.ammoByWeapon[player.weapon] = player.ammo;
     const origin = new THREE.Vector3();
     camera.getWorldPosition(origin);
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
     const muzzle = origin.clone().addScaledVector(dir, 1.2);
     this.effects.muzzle(muzzle);
-    const hit = this.shoot(origin, dir, w.range);
-    const end = hit ? hit.point : origin.clone().addScaledVector(dir, w.range);
-    this.effects.tracer(muzzle, end);
-    if (hit) {
-      if (hit.kind === 'ped' || hit.kind === 'enemy') {
-        this.effects.burst(hit.point, 0xc22a2a, 12, 5, 2);
-      } else if (hit.kind === 'car') {
-        this.effects.burst(hit.point, 0xffd23e, 10, 5, 2);
-      } else {
-        this.effects.burst(hit.point, 0xcccccc, 8, 3, 2);
+    const pellets = w.pellets || 1;
+    const hits = [];
+    for (let i = 0; i < pellets; i++) {
+      const d = dir.clone();
+      if (pellets > 1) {
+        // Fan the pellets out around the aim point.
+        const jitter = new THREE.Vector3(
+          (Math.random() - 0.5) * 2 * w.spread,
+          (Math.random() - 0.5) * 2 * w.spread,
+          0,
+        );
+        d.add(jitter).normalize();
+      }
+      const hit = this.shoot(origin, d, w.range);
+      const end = hit ? hit.point : origin.clone().addScaledVector(d, w.range);
+      this.effects.tracer(muzzle, end);
+      if (hit) {
+        hit.damage = w.damage;
+        if (hit.kind === 'ped' || hit.kind === 'enemy') {
+          this.effects.burst(hit.point, 0xc22a2a, 12, 5, 2);
+        } else if (hit.kind === 'car') {
+          this.effects.burst(hit.point, 0xffd23e, 10, 5, 2);
+        } else {
+          this.effects.burst(hit.point, 0xcccccc, 8, 3, 2);
+        }
+        hits.push(hit);
       }
     }
-    return hit;
+    return hits;
   }
 
   // A melee swing: hits the nearest ped or enemy in front of the player.
@@ -98,15 +121,18 @@ export class Combat {
     return best;
   }
 
-  // Spawn armed gang members at the given points.
-  spawnGang(points) {
-    for (const p of points) {
-      const parts = makePersonMesh(0x8a1f1f, 0x222226, 0xc98e6b);
+  // Spawn armed gang members at the given points. bossIdx, when given,
+  // marks one of them as the boss: tougher, and in a gold shirt.
+  spawnGang(points, bossIdx = -1) {
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const isBoss = i === bossIdx;
+      const parts = makePersonMesh(isBoss ? 0xc9a227 : 0x8a1f1f, 0x222226, 0xc98e6b);
       parts.group.position.set(p.x, 0, p.z);
       this.scene.add(parts.group);
       const enemy = {
         parts, pos: parts.group.position, heading: 0,
-        health: 60, dead: false, shootTimer: 0.6 + Math.random(), strafe: 0,
+        health: isBoss ? 160 : 60, dead: false, shootTimer: 0.6 + Math.random(), strafe: 0,
       };
       this.enemies.push(enemy);
       this.register(parts.group, 'enemy', enemy);

@@ -54,8 +54,14 @@ export class Player {
     this.onGround = true;
     this.heading = Math.PI;
     this.health = P.maxHealth;
+    this.armor = 0;
     this.lastDamage = -99;
     this.weapon = 'fists';
+    // What Rico carries: the guns he owns, and each gun's own magazine.
+    // `ammo` always mirrors the current weapon, so the shooting code never
+    // has to know which gun is out.
+    this.owned = { pistol: true };
+    this.ammoByWeapon = { pistol: 12 };
     this.ammo = 12;
     this.reloadTimer = 0;
     this.fireTimer = 0;
@@ -67,7 +73,10 @@ export class Player {
 
   damage(amount, now) {
     if (this.dead) return;
-    this.health -= amount;
+    // Armor soaks the hit first; only what is left reaches health.
+    const soaked = Math.min(this.armor, amount);
+    this.armor -= soaked;
+    this.health -= amount - soaked;
     this.lastDamage = now;
     if (this.health <= 0) {
       this.health = 0;
@@ -77,6 +86,41 @@ export class Player {
 
   heal(amount) {
     this.health = Math.min(P.maxHealth, this.health + amount);
+  }
+
+  addArmor(amount) {
+    this.armor = Math.min(P.maxArmor, this.armor + amount);
+  }
+
+  // Pick up a gun: it joins the arsenal with a magazine of ammo, and Rico
+  // draws it straight away. Picking up a gun he already owns just tops up
+  // its ammo instead.
+  giveWeapon(id, bonus) {
+    const first = !this.owned[id];
+    this.owned[id] = true;
+    this.ammoByWeapon[id] = (this.ammoByWeapon[id] || 0) + bonus;
+    this.setWeapon(id);
+    return first;
+  }
+
+  // Holster the current gun (its magazine stays where it was) and draw
+  // another one. Fists need no magazine.
+  setWeapon(id) {
+    if (this.weapon !== 'fists') this.ammoByWeapon[this.weapon] = this.ammo;
+    this.weapon = id;
+    this.ammo = id === 'fists' ? 0 : (this.ammoByWeapon[id] || 0);
+    this.reloadTimer = 0;
+  }
+
+  // Fresh magazine for the gun in hand; the reload timer is the lockout
+  // while Rico swaps it.
+  reloadCurrent() {
+    const w = CFG.weapons[this.weapon];
+    if (!w || !w.mag || this.ammo >= w.mag) return false;
+    this.reloadTimer = w.reload;
+    this.ammo = w.mag;
+    this.ammoByWeapon[this.weapon] = w.mag;
+    return true;
   }
 
   update(dt, input, city, camYaw, now) {
