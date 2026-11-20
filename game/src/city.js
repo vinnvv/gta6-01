@@ -53,19 +53,31 @@ function facadeTexture(rng, base, floors, cols) {
   return tex;
 }
 
-// The whole ground as one texture: asphalt, roads, lane dashes, sidewalks,
-// crosswalks, sand and the sea edge. World units map to texture pixels.
+// The whole ground as one texture: asphalt, roads, sidewalks, sand and the
+// sea edge. World units map to texture pixels. Road markings, crosswalks and
+// curbs are geometry (see buildStreetDetail) so they stay crisp at any
+// distance; the texture carries the asphalt, pavement and ground variation.
 function groundTexture() {
   const world = HALF + CITY.roadWidth + CITY.beachDepth + CITY.seaWidth + 40;
-  const S = 2048;
+  const S = 4096;
   const scale = S / (world * 2);
   const toPx = (v) => (v + world) * scale;
+  const rng = makeRng(20261120);
   const cv = document.createElement('canvas');
   cv.width = S; cv.height = S;
   const g = cv.getContext('2d');
   // Base: city asphalt, warm from the low sun.
   g.fillStyle = '#38352f';
   g.fillRect(0, 0, S, S);
+  // Large soft blotches so the base is never one flat tone.
+  for (let i = 0; i < 30; i++) {
+    const cx = -HALF + rng() * (HALF * 2);
+    const cz = -HALF + rng() * (HALF * 2);
+    g.fillStyle = rng() < 0.5 ? 'rgba(255,220,170,0.05)' : 'rgba(40,30,20,0.05)';
+    g.beginPath();
+    g.ellipse(toPx(cx), toPx(cz), (20 + rng() * 40) * scale, (15 + rng() * 30) * scale, rng() * Math.PI, 0, Math.PI * 2);
+    g.fill();
+  }
   // Sea (south, high Z).
   g.fillStyle = '#2e7fa8';
   g.fillRect(0, toPx(HALF + CITY.beachDepth), S, S);
@@ -75,6 +87,24 @@ function groundTexture() {
   // Wet sand line.
   g.fillStyle = '#d9c48d';
   g.fillRect(0, toPx(HALF + CITY.beachDepth - 6), S, 6 * scale);
+  // Sand speckle and ripple lines on the beach.
+  for (let i = 0; i < 900; i++) {
+    const x = rng() * S;
+    const y = toPx(HALF) + rng() * (CITY.beachDepth * scale);
+    g.fillStyle = rng() < 0.5 ? 'rgba(120,100,60,0.20)' : 'rgba(255,246,220,0.25)';
+    g.fillRect(x, y, 2, 2);
+  }
+  g.strokeStyle = 'rgba(160,135,90,0.35)';
+  g.lineWidth = 1.5;
+  for (let i = 0; i < 26; i++) {
+    const y = toPx(HALF + 4 + rng() * (CITY.beachDepth - 8));
+    g.beginPath();
+    for (let x = 0; x <= S; x += 64) {
+      const yy = y + Math.sin(x * 0.01 + i) * 3;
+      if (x === 0) g.moveTo(x, yy); else g.lineTo(x, yy);
+    }
+    g.stroke();
+  }
   const lines = roadLines();
   // Roads: lighter asphalt strips.
   g.fillStyle = '#4a453e';
@@ -82,13 +112,99 @@ function groundTexture() {
     g.fillRect(toPx(x - ROAD_HALF), 0, CITY.roadWidth * scale, toPx(HALF));
     g.fillRect(0, toPx(x - ROAD_HALF), toPx(HALF), CITY.roadWidth * scale);
   }
-  // Sidewalks: pale warm borders around every block.
-  g.fillStyle = '#a89a80';
+  // Asphalt speckle across the road area.
+  for (let i = 0; i < 7000; i++) {
+    const x = rng() * S;
+    const y = rng() * toPx(HALF);
+    g.fillStyle = rng() < 0.5 ? 'rgba(0,0,0,0.10)' : 'rgba(255,240,210,0.07)';
+    g.fillRect(x, y, 2, 2);
+  }
+  // Darker repair patches on the roads.
+  for (let i = 0; i < 46; i++) {
+    const lx = lines[Math.floor(rng() * lines.length)];
+    const along = -HALF + rng() * (HALF * 2);
+    const vertical = rng() < 0.5;
+    const w = 3 + rng() * 5;
+    const h = 4 + rng() * 8;
+    const cx = vertical ? lx + (rng() - 0.5) * 4 : along;
+    const cz = vertical ? along : lx + (rng() - 0.5) * 4;
+    g.fillStyle = rng() < 0.5 ? 'rgba(20,18,16,0.28)' : 'rgba(90,82,70,0.30)';
+    g.fillRect(toPx(cx - (vertical ? w : h) / 2), toPx(cz - (vertical ? h : w) / 2), (vertical ? w : h) * scale, (vertical ? h : w) * scale);
+  }
+  // Tire wear: two darker wheel tracks along every road.
+  g.fillStyle = 'rgba(15,13,11,0.13)';
+  for (const x of lines) {
+    for (const off of [-2.1, 2.1]) {
+      g.fillRect(toPx(x + off - 0.7), 0, 1.4 * scale, toPx(HALF));
+      g.fillRect(0, toPx(x + off - 0.7), toPx(HALF), 1.4 * scale);
+    }
+  }
+  // Cracks: sparse dark polylines on the roads.
+  g.strokeStyle = 'rgba(12,10,9,0.4)';
+  g.lineWidth = 1.2;
+  for (let i = 0; i < 34; i++) {
+    const lx = lines[Math.floor(rng() * lines.length)];
+    const vertical = rng() < 0.5;
+    let ax = vertical ? lx + (rng() - 0.5) * 8 : -HALF + rng() * (HALF * 2);
+    let az = vertical ? -HALF + rng() * (HALF * 2) : lx + (rng() - 0.5) * 8;
+    g.beginPath();
+    g.moveTo(toPx(ax), toPx(az));
+    const segs = 3 + Math.floor(rng() * 4);
+    for (let s = 0; s < segs; s++) {
+      if (vertical) { az += 3 + rng() * 5; ax += (rng() - 0.5) * 3; }
+      else { ax += 3 + rng() * 5; az += (rng() - 0.5) * 3; }
+      g.lineTo(toPx(ax), toPx(az));
+    }
+    g.stroke();
+  }
+  // Sidewalks: pale warm borders around every block, with tile seams and
+  // per-tile shade variation.
   for (let i = 0; i < CITY.blocksX; i++) {
     for (let j = 0; j < CITY.blocksZ; j++) {
       const x0 = -HALF + i * PITCH;
       const z0 = -HALF + j * PITCH;
+      g.fillStyle = '#a89a80';
       g.fillRect(toPx(x0 - 2), toPx(z0 - 2), (CITY.blockSize + 4) * scale, (CITY.blockSize + 4) * scale);
+      for (let t = 0; t < 26; t++) {
+        const tx = x0 - 2 + Math.floor(rng() * 30) * 2;
+        const tz = z0 - 2 + Math.floor(rng() * 30) * 2;
+        g.fillStyle = rng() < 0.5 ? 'rgba(255,245,220,0.10)' : 'rgba(60,50,35,0.10)';
+        g.fillRect(toPx(tx), toPx(tz), 2 * scale, 2 * scale);
+      }
+      g.strokeStyle = 'rgba(70,60,45,0.35)';
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let k = 0; k <= 30; k++) {
+        const vx = x0 - 2 + k * 2;
+        g.moveTo(toPx(vx), toPx(z0 - 2));
+        g.lineTo(toPx(vx), toPx(z0 + CITY.blockSize + 2));
+        const hz = z0 - 2 + k * 2;
+        g.moveTo(toPx(x0 - 2), toPx(hz));
+        g.lineTo(toPx(x0 + CITY.blockSize + 2), toPx(hz));
+      }
+      g.stroke();
+    }
+  }
+  // Block interiors: grass, dirt and sand patches so no block is a flat
+  // tan plane. Sand near the Strip (south rows), grass and dirt elsewhere.
+  for (let i = 0; i < CITY.blocksX; i++) {
+    for (let j = 0; j < CITY.blocksZ; j++) {
+      const x0 = -HALF + i * PITCH;
+      const z0 = -HALF + j * PITCH;
+      const nearStrip = j >= CITY.blocksZ - 2;
+      const n = 3 + Math.floor(rng() * 3);
+      for (let b = 0; b < n; b++) {
+        const cx = x0 + 4 + rng() * (CITY.blockSize - 8);
+        const cz = z0 + 4 + rng() * (CITY.blockSize - 8);
+        const rx = (4 + rng() * 9) * scale;
+        const rz = (3 + rng() * 7) * scale;
+        const kind = nearStrip && rng() < 0.45 ? 'sand' : (rng() < 0.55 ? 'grass' : 'dirt');
+        g.fillStyle = kind === 'grass' ? 'rgba(96,128,70,0.70)'
+          : kind === 'dirt' ? 'rgba(122,94,62,0.65)' : 'rgba(232,213,164,0.70)';
+        g.beginPath();
+        g.ellipse(toPx(cx), toPx(cz), rx, rz, rng() * Math.PI, 0, Math.PI * 2);
+        g.fill();
+      }
     }
   }
   // Harbor Yards apron: concrete east of the city, where the containers sit.
@@ -101,24 +217,6 @@ function groundTexture() {
   }
   g.fillStyle = '#e8e8e8';
   g.fillRect(toPx(HALF), toPx(-HALF), 2, (HALF * 2) * scale);
-  // Lane dashes along every road.
-  g.fillStyle = '#d8c25a';
-  for (const x of lines) {
-    for (let z = -HALF; z < HALF; z += 14) {
-      g.fillRect(toPx(x) - 1, toPx(z), 2, 7 * scale);
-      g.fillRect(toPx(z), toPx(x) - 1, 7 * scale, 2);
-    }
-  }
-  // Crosswalks at intersections.
-  g.fillStyle = '#e8e8e8';
-  for (const x of lines) {
-    for (const z of lines) {
-      for (let k = -3; k <= 3; k++) {
-        g.fillRect(toPx(x + k * 2) - 1, toPx(z - ROAD_HALF), 2, 3 * scale);
-        g.fillRect(toPx(x + k * 2) - 1, toPx(z + ROAD_HALF - 3), 2, 3 * scale);
-      }
-    }
-  }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
@@ -162,6 +260,22 @@ function streetLight() {
   return group;
 }
 
+// Straight-ahead lane arrow, drawn in the shape's XY plane with the tip
+// at +Y. buildStreetDetail lays it flat (rotateX -90deg), so the tip then
+// points along -Z and each instance's rotation.y aims it.
+function arrowShape() {
+  const s = new THREE.Shape();
+  s.moveTo(-0.45, -1.3);
+  s.lineTo(0.45, -1.3);
+  s.lineTo(0.45, 0.3);
+  s.lineTo(1.0, 0.3);
+  s.lineTo(0, 1.3);
+  s.lineTo(-1.0, 0.3);
+  s.lineTo(-0.45, 0.3);
+  s.closePath();
+  return s;
+}
+
 export class City {
   constructor(scene, seed = 1337) {
     this.scene = scene;
@@ -175,6 +289,7 @@ export class City {
       for (const z of this.roadXs) this.nodes.push({ x, z });
     }
     this.buildGround();
+    this.buildStreetDetail();
     this.buildBlocks();
     this.buildBeachProps();
     this.buildPort();
@@ -201,6 +316,143 @@ export class City {
     sea.rotation.x = -Math.PI / 2;
     sea.position.set(0, 0.15, HALF + CITY.beachDepth + CITY.seaWidth / 2);
     this.scene.add(sea);
+  }
+
+  // Crisp street furniture as geometry: the ground texture is only ~3.4 px
+  // per world unit, so markings drawn in it smear. These instanced meshes
+  // sit just above the ground and stay sharp at any distance. Layout,
+  // widths and physics are untouched; this is paint and curbs only.
+  buildStreetDetail() {
+    const scene = this.scene;
+    const lines = this.roadXs;
+    const rng = makeRng(777);
+    const flat = (geo) => { geo.rotateX(-Math.PI / 2); return geo; };
+    const markWhite = new THREE.MeshBasicMaterial({ color: 0xf2ecdc });
+    const markYellow = new THREE.MeshBasicMaterial({ color: 0xe3c04e });
+    const markDark = new THREE.MeshBasicMaterial({ color: 0x2a2724 });
+    const markSkid = new THREE.MeshBasicMaterial({ color: 0x1a1714, transparent: true, opacity: 0.32 });
+    for (const m of [markWhite, markYellow, markDark, markSkid]) {
+      m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2;
+    }
+    const dummy = new THREE.Object3D();
+    const place = (mesh, list) => {
+      list.forEach((t, idx) => {
+        dummy.position.set(t.p[0], t.p[1], t.p[2]);
+        dummy.rotation.set(0, t.r || 0, 0);
+        dummy.scale.set(t.s[0], t.s[1], t.s[2]);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(idx, dummy.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+    };
+    const unitPlane = () => flat(new THREE.PlaneGeometry(1, 1));
+
+    // Solid white edge lines along both edges of every road. The visible
+    // asphalt runs 5 units either side of the centerline (the sidewalk
+    // rects overdraw the outer 2 units), so the lines sit at +/-4.6.
+    {
+      const list = [];
+      for (const l of lines) {
+        for (const off of [-4.6, 4.6]) {
+          list.push({ p: [l + off, 0.02, 0], r: 0, s: [0.3, 1, HALF * 2] });
+          list.push({ p: [0, 0.02, l + off], r: Math.PI / 2, s: [0.3, 1, HALF * 2] });
+        }
+      }
+      place(new THREE.InstancedMesh(unitPlane(), markWhite, list.length), list);
+    }
+    // Yellow dashed center lines, broken at intersections.
+    {
+      const list = [];
+      const nearLine = (v) => lines.some((l) => Math.abs(v - l) < 11);
+      for (const l of lines) {
+        for (let v = -HALF; v < HALF; v += 8) {
+          if (nearLine(v)) continue;
+          list.push({ p: [l, 0.02, v], r: 0, s: [0.45, 1, 3] });
+          list.push({ p: [v, 0.02, l], r: Math.PI / 2, s: [0.45, 1, 3] });
+        }
+      }
+      place(new THREE.InstancedMesh(unitPlane(), markYellow, list.length), list);
+    }
+    // Crosswalk stripes, stop lines and lane arrows at every intersection.
+    {
+      const stripes = [];
+      const stops = [];
+      const arrows = [];
+      const arrowGeo = flat(new THREE.ShapeGeometry(arrowShape()));
+      for (const lx of lines) {
+        for (const lz of lines) {
+          for (let k = -3; k <= 3; k++) {
+            stripes.push({ p: [lx + k * 1.6, 0.02, lz - 9.5], r: 0, s: [0.9, 1, 10] });
+            stripes.push({ p: [lx + k * 1.6, 0.02, lz + 9.5], r: 0, s: [0.9, 1, 10] });
+            stripes.push({ p: [lx - 9.5, 0.02, lz + k * 1.6], r: Math.PI / 2, s: [0.9, 1, 10] });
+            stripes.push({ p: [lx + 9.5, 0.02, lz + k * 1.6], r: Math.PI / 2, s: [0.9, 1, 10] });
+          }
+          stops.push({ p: [lx, 0.02, lz - 12.5], r: 0, s: [10, 1, 0.5] });
+          stops.push({ p: [lx, 0.02, lz + 12.5], r: 0, s: [10, 1, 0.5] });
+          stops.push({ p: [lx - 12.5, 0.02, lz], r: Math.PI / 2, s: [10, 1, 0.5] });
+          stops.push({ p: [lx + 12.5, 0.02, lz], r: Math.PI / 2, s: [10, 1, 0.5] });
+          // Lane arrows on each approach, right-hand lane, facing the crossing.
+          arrows.push({ p: [lx - 2.2, 0.02, lz - 17], r: Math.PI, s: [1, 1, 1] });
+          arrows.push({ p: [lx + 2.2, 0.02, lz + 17], r: 0, s: [1, 1, 1] });
+          arrows.push({ p: [lx - 17, 0.02, lz + 2.2], r: -Math.PI / 2, s: [1, 1, 1] });
+          arrows.push({ p: [lx + 17, 0.02, lz - 2.2], r: Math.PI / 2, s: [1, 1, 1] });
+        }
+      }
+      place(new THREE.InstancedMesh(unitPlane(), markWhite, stripes.length), stripes);
+      place(new THREE.InstancedMesh(unitPlane(), markWhite, stops.length), stops);
+      place(new THREE.InstancedMesh(arrowGeo, markWhite, arrows.length), arrows);
+    }
+    // Raised curbs along every block side, with gaps at the corners where
+    // the crosswalks cut through.
+    {
+      const list = [];
+      for (let i = 0; i < CITY.blocksX; i++) {
+        for (let j = 0; j < CITY.blocksZ; j++) {
+          const bx = -HALF + i * PITCH;
+          const bz = -HALF + j * PITCH;
+          const cx = bx + CITY.blockSize / 2;
+          const cz = bz + CITY.blockSize / 2;
+          list.push({ p: [bx - 2, 0.07, cz], r: Math.PI / 2, s: [50, 1, 1] });
+          list.push({ p: [bx + CITY.blockSize + 2, 0.07, cz], r: Math.PI / 2, s: [50, 1, 1] });
+          list.push({ p: [cx, 0.07, bz - 2], r: 0, s: [50, 1, 1] });
+          list.push({ p: [cx, 0.07, bz + CITY.blockSize + 2], r: 0, s: [50, 1, 1] });
+        }
+      }
+      const curbGeo = new THREE.BoxGeometry(1, 0.14, 0.4);
+      const curbMat = new THREE.MeshLambertMaterial({ color: 0xc9bda2 });
+      place(new THREE.InstancedMesh(curbGeo, curbMat, list.length), list);
+    }
+    // Manhole covers mid-block along the roads.
+    {
+      const holes = [];
+      for (let li = 0; li < lines.length; li++) {
+        for (let i = 0; i < CITY.blocksX; i += 2) {
+          const c = -HALF + i * PITCH + CITY.blockSize / 2;
+          holes.push({ p: [lines[li] + 2.5, 0.02, c], r: 0, s: [1, 1, 1] });
+          holes.push({ p: [c, 0.02, lines[li] + 2.5], r: 0, s: [1, 1, 1] });
+        }
+      }
+      const holeGeo = flat(new THREE.CircleGeometry(0.75, 14));
+      place(new THREE.InstancedMesh(holeGeo, markDark, holes.length), holes);
+    }
+    // Skid marks near stop lines.
+    {
+      const skids = [];
+      for (let n = 0; n < 48; n++) {
+        const lx = lines[Math.floor(rng() * lines.length)];
+        const lz = lines[Math.floor(rng() * lines.length)];
+        const dir = Math.floor(rng() * 4);
+        const lane = rng() < 0.5 ? -2.2 : 2.2;
+        let p, r;
+        if (dir === 0) { p = [lx + lane, 0.03, lz - 15 - rng() * 4]; r = (rng() - 0.5) * 0.3; }
+        else if (dir === 1) { p = [lx + lane, 0.03, lz + 15 + rng() * 4]; r = Math.PI + (rng() - 0.5) * 0.3; }
+        else if (dir === 2) { p = [lx - 15 - rng() * 4, 0.03, lz + lane]; r = Math.PI / 2 + (rng() - 0.5) * 0.3; }
+        else { p = [lx + 15 + rng() * 4, 0.03, lz - lane]; r = -Math.PI / 2 + (rng() - 0.5) * 0.3; }
+        skids.push({ p, r, s: [0.9, 1, 4.5] });
+      }
+      place(new THREE.InstancedMesh(unitPlane(), markSkid, skids.length), skids);
+    }
   }
 
   buildBlocks() {
